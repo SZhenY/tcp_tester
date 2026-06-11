@@ -106,8 +106,8 @@ jobs:
         with:
           name: "TCP Tester ${{ steps.version.outputs.VERSION }}"
           files: |
-            windows-gui/tcp-tester.exe
-            windows-amd64/tcp-tester-windows-amd64.exe
-            linux-amd64/tcp-tester-linux-amd64
-            linux-arm64/tcp-tester-linux-arm64
+            windows-gui/tcp-tester-windows-amd64-gui.exe
+            windows-amd64/tcp-tester-windows-amd64-cli.exe
+            linux-amd64/tcp-tester-linux-amd64-cli
+            linux-arm64/tcp-tester-linux-arm64-cli
           generate_release_notes: true
