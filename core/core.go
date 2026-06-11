@@ -1,0 +1,344 @@
+// core.go — TCP 连接测试核心引擎
+
+package core
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"runtime"
+	"runtime/debug"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// App TCP 连接测试引擎
+type App struct {
+	emitter EventEmitter // 事件发射器，解耦 GUI/CLI 依赖
+
+	isRunning  atomic.Bool // 测试是否正在运行
+	stopped    atomic.Bool // 是否已请求停止
+	finishOnce sync.Once   // 确保 finishTest 只执行一次
+
+	stopChan chan struct{} // 停止信号通道
+
+	successCount  int64 // 成功连接计数
+	failureCount  int64 // 失败连接计数
+	activeWorkers int64 // 活跃 worker 数量
+
+	poolShards       []connPoolShard // 分片连接池
+	poolShardCount   int             // 分片数量
+	poolIndex        int64           // 连接池全局索引（原子操作）
+	poolSizePerShard int             // 每个分片的容量
+	poolClosed       atomic.Bool     // 连接池是否已关闭
+
+	testWg        sync.WaitGroup    // 测试 goroutine 等待组
+	testCtx       context.Context   // 测试上下文
+	testCancel    context.CancelFunc // 取消测试的函数
+	ctxMu         sync.RWMutex      // 上下文读写锁
+	testStartTime time.Time         // 测试开始时间
+}
+
+// New 创建新的测试引擎实例
+func New(emitter EventEmitter) *App {
+	return &App{
+		emitter:  emitter,
+		stopChan: make(chan struct{}, 1),
+	}
+}
+
+// Wait 等待测试完成
+func (a *App) Wait() {
+	a.testWg.Wait()
+}
+
+// StartTest 开始 TCP 连接测试
+func (a *App) StartTest(target string, threadCount int, intervalMs int, failureLimit, successLimit int64) error {
+	if a.isRunning.Load() {
+		return fmt.Errorf("测试已在运行中")
+	}
+
+	// 校验目标地址格式
+	_, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		return fmt.Errorf("目标地址格式错误: %v", err)
+	}
+	port, _ := strconv.Atoi(portStr)
+
+	// 校验输入参数
+	if msg := ValidateInputs(port, threadCount, intervalMs, failureLimit, successLimit); msg != "" {
+		return fmt.Errorf(msg)
+	}
+
+	// 重置状态
+	a.successCount = 0
+	a.failureCount = 0
+	a.activeWorkers = 0
+	a.isRunning.Store(true)
+	a.stopped.Store(false)
+	a.finishOnce = sync.Once{}
+
+	// 创建新的测试上下文
+	a.ctxMu.Lock()
+	if a.testCancel != nil {
+		a.testCancel()
+	}
+	a.testCtx, a.testCancel = context.WithCancel(context.Background())
+	a.ctxMu.Unlock()
+
+	// 初始化连接池
+	a.initPool(int(successLimit))
+	a.testStartTime = time.Now()
+
+	// 发送启动日志
+	a.emitter.EmitLog(fmt.Sprintf("[%s] 开始测试 -> %s (并发:%d 间隔:%dms)", timestamp(), target, threadCount, intervalMs))
+	a.emitter.EmitLog(fmt.Sprintf("[%s] 连接池已初始化 (分片模式: %dx%d)", timestamp(), a.poolShardCount, a.poolSizePerShard))
+
+	// 启动测试和统计
+	a.testWg.Add(1)
+	go a.runTest(target, threadCount, intervalMs, failureLimit, successLimit)
+	go a.statsTicker()
+
+	return nil
+}
+
+// StopTest 请求停止测试
+func (a *App) StopTest() {
+	if !a.isRunning.Load() || a.stopped.Swap(true) {
+		return
+	}
+	a.emitter.EmitLog(fmt.Sprintf("[%s] 正在停止...", timestamp()))
+	select {
+	case a.stopChan <- struct{}{}:
+	default:
+	}
+}
+
+// Cleanup 清理所有资源
+func (a *App) Cleanup() {
+	a.stopped.Store(true)
+	if a.testCancel != nil {
+		a.testCancel()
+	}
+	a.testWg.Wait()
+	a.closeAllConnections()
+}
+
+// runTest 测试主循环（Worker Pool 模式）
+func (a *App) runTest(target string, threadCount int, intervalMs int, failureLimit, successLimit int64) {
+	defer a.testWg.Done()
+
+	a.ctxMu.RLock()
+	ctx := a.testCtx
+	a.ctxMu.RUnlock()
+
+	// 创建工作通道和 Worker Pool
+	workChan := make(chan string, threadCount*2)
+	var workerWg sync.WaitGroup
+
+	// 预分配 Dialer，所有 worker 共享
+	var dialer net.Dialer
+	dialer.Timeout = 3 * time.Second
+
+	// 启动持久化 worker
+	for i := 0; i < threadCount; i++ {
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			for t := range workChan {
+				a.testConnection(ctx, t, &dialer)
+			}
+		}()
+	}
+
+	var lastBatchTime int64
+
+	// 主循环：发送任务到工作通道
+RunLoop:
+	for {
+		if a.stopped.Load() {
+			break RunLoop
+		}
+
+		// 检查是否达到限制
+		if reason := a.checkLimits(failureLimit, successLimit); reason != "" {
+			a.emitter.EmitLog(fmt.Sprintf("[%s] %s", timestamp(), reason))
+			break RunLoop
+		}
+
+		// 间隔控制
+		if intervalMs > 0 {
+			now := time.Now().UnixMilli()
+			if lastBatchTime > 0 && now-lastBatchTime < int64(intervalMs) {
+				time.Sleep(time.Duration(int64(intervalMs)-(now-lastBatchTime)) * time.Millisecond)
+			}
+			lastBatchTime = time.Now().UnixMilli()
+		}
+
+		// 非阻塞发送任务
+		select {
+		case workChan <- target:
+		default:
+			runtime.Gosched()
+		}
+	}
+
+	// 等待所有 worker 完成
+	close(workChan)
+	a.ctxMu.RLock()
+	if a.testCancel != nil {
+		a.testCancel()
+	}
+	a.ctxMu.RUnlock()
+	workerWg.Wait()
+
+	// 确定停止原因并完成测试
+	a.finishTest(a.determineStopReason(failureLimit, successLimit))
+}
+
+// checkLimits 检查是否达到成功/失败上限
+func (a *App) checkLimits(failureLimit, successLimit int64) string {
+	if atomic.LoadInt64(&a.failureCount) >= failureLimit {
+		return fmt.Sprintf("达到失败上限: %d", failureLimit)
+	}
+	if atomic.LoadInt64(&a.successCount) >= successLimit {
+		return fmt.Sprintf("达到成功上限: %d", successLimit)
+	}
+	return ""
+}
+
+// determineStopReason 确定测试停止原因
+func (a *App) determineStopReason(failureLimit, successLimit int64) string {
+	if a.stopped.Load() {
+		return "手动停止"
+	}
+	if atomic.LoadInt64(&a.failureCount) >= failureLimit {
+		return fmt.Sprintf("达到失败上限 (%d)", failureLimit)
+	}
+	if atomic.LoadInt64(&a.successCount) >= successLimit {
+		return fmt.Sprintf("达到成功上限 (%d)", successLimit)
+	}
+	return "测试结束"
+}
+
+// testConnection 执行单次 TCP 连接测试
+func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dialer) {
+	conn, err := dialer.DialContext(ctx, "tcp", target)
+	if err != nil {
+		if ctx.Err() != nil {
+			return // 上下文取消，不计为失败
+		}
+		atomic.AddInt64(&a.failureCount, 1)
+		return
+	}
+
+	// 检查上下文是否已取消
+	select {
+	case <-ctx.Done():
+		forceCloseConn(conn)
+		return
+	default:
+	}
+
+	atomic.AddInt64(&a.successCount, 1)
+
+	// 设置 TCP 连接参数
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetReadBuffer(1024)
+		tcpConn.SetWriteBuffer(1024)
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(10 * time.Second)
+		tcpConn.SetNoDelay(true)
+	}
+
+	// 存入连接池
+	a.storeConn(conn)
+}
+
+// finishTest 完成测试，发送最终统计和日志
+func (a *App) finishTest(stopReason string) {
+	a.finishOnce.Do(func() {
+		a.isRunning.Store(false)
+		a.stopped.Store(false)
+
+		// 断开连接
+		a.emitter.EmitLog(fmt.Sprintf("[%s] 正在断开连接...", timestamp()))
+		a.closeAllConnections()
+		a.emitter.EmitLog(fmt.Sprintf("[%s] 连接已断开", timestamp()))
+
+		// 计算最终统计
+		finalSucc := atomic.LoadInt64(&a.successCount)
+		finalFail := atomic.LoadInt64(&a.failureCount)
+		totalElapsed := time.Since(a.testStartTime).Seconds()
+		avgCps := float64(0)
+		if totalElapsed > 0 {
+			avgCps = float64(finalSucc+finalFail) / totalElapsed
+		}
+
+		// 发送最终统计和完成事件
+		a.emitter.EmitStats(Stats{
+			Success: finalSucc,
+			Failure: finalFail,
+			Total:   finalSucc + finalFail,
+			Rate:    0,
+			AvgCPS:  avgCps,
+		})
+		a.emitter.EmitLog(fmt.Sprintf("[%s] 测试完成 - 总成功: %d 总失败: %d 原因: %s", timestamp(), finalSucc, finalFail, stopReason))
+		a.emitter.EmitTestFinished(stopReason)
+
+		// 释放连接池引用，允许 GC 回收
+		a.poolShards = nil
+
+		// 释放内存
+		runtime.GC()
+		debug.FreeOSMemory()
+		debug.SetGCPercent(100) // 恢复默认 GC 频率
+	})
+}
+
+// statsTicker 每秒发送一次统计数据
+func (a *App) statsTicker() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	var lastSucc, lastFail int64
+	lastTime := time.Now()
+
+	for range ticker.C {
+		if !a.isRunning.Load() {
+			return
+		}
+
+		succ := atomic.LoadInt64(&a.successCount)
+		fail := atomic.LoadInt64(&a.failureCount)
+
+		// 计算实时速率
+		newTotal := (succ - lastSucc) + (fail - lastFail)
+		elapsed := time.Since(lastTime).Seconds()
+		rate := float64(0)
+		if elapsed > 0 {
+			rate = float64(newTotal) / elapsed
+		}
+
+		// 计算平均速率
+		totalElapsed := time.Since(a.testStartTime).Seconds()
+		avgCps := float64(0)
+		if totalElapsed > 0 {
+			avgCps = float64(succ+fail) / totalElapsed
+		}
+
+		a.emitter.EmitStats(Stats{
+			Success: succ,
+			Failure: fail,
+			Total:   succ + fail,
+			Rate:    rate,
+			AvgCPS:  avgCps,
+		})
+
+		lastSucc = succ
+		lastFail = fail
+		lastTime = time.Now()
+	}
+}

@@ -1,0 +1,67 @@
+:root {
+  /* ==========================================
+     1. MD3 Motion Durations (持续时间)
+     ========================================== */
+  --md-sys-motion-duration-short-1: 50ms;
+  --md-sys-motion-duration-short-2: 100ms;
+  --md-sys-motion-duration-short-3: 150ms;
+  --md-sys-motion-duration-short-4: 200ms;
+
+  --md-sys-motion-duration-medium-1: 250ms;
+  --md-sys-motion-duration-medium-2: 300ms;
+  --md-sys-motion-duration-medium-3: 350ms;
+  --md-sys-motion-duration-medium-4: 400ms;
+
+  --md-sys-motion-duration-long-1: 450ms;
+  --md-sys-motion-duration-long-2: 500ms;
+  --md-sys-motion-duration-long-3: 550ms;
+  --md-sys-motion-duration-long-4: 600ms;
+
+  /* ==========================================
+     2. MD3 Motion Easing (缓动曲线)
+     ========================================== */
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.4, 0.0, 1, 1);
+  --md-sys-motion-easing-spring: cubic-bezier(0.175, 0.885, 0.32, 1.15);
+
+  /* ==========================================
+     3. 业务级动效标记 (Motion Tokens)
+     ========================================== */
+  --anim-duration-enter: var(--md-sys-motion-duration-medium-2);
+  --anim-duration-exit: var(--md-sys-motion-duration-short-4);
+
+  --anim-ease-enter: var(--md-sys-motion-easing-emphasized-decelerate);
+  --anim-ease-exit: var(--md-sys-motion-easing-emphasized-accelerate);
+
+  --anim-color-duration: var(--md-sys-motion-duration-short-2);
+  --anim-color-ease: var(--md-sys-motion-easing-standard-decelerate);
+}
+
+/* ==========================================
+   4. Card Appear Animation (卡片入场动画)
+   ========================================== */
+
+@keyframes card-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-appear {
+  animation: card-appear var(--anim-duration-enter) var(--anim-ease-enter) both;
+}
+
+.card-appear-delay-1 {
+  animation-delay: 50ms;
+}
+
+.card-appear-delay-2 {
+  animation-delay: 100ms;
+}
