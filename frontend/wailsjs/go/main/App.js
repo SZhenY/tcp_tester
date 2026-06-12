@@ -6,10 +6,6 @@ export function GetDefaultConfig() {
   return window['go']['main']['App']['GetDefaultConfig']();
 }
 
-export function PauseTest() {
-  return window['go']['main']['App']['PauseTest']();
-}
-
 export function ResolveDomain(arg1) {
   return window['go']['main']['App']['ResolveDomain'](arg1);
 }

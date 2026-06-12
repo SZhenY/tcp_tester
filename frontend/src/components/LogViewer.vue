@@ -104,7 +104,7 @@ onUnmounted(() => {
   min-height: 0;
   background: #2B2930;
   border: 1px solid #454349;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -161,7 +161,7 @@ onUnmounted(() => {
 
 .log-line {
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: 4px;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   font-size: 0.875rem;
   line-height: 20px;

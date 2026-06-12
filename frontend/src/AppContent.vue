@@ -142,7 +142,6 @@ const targetDisplay = computed(() => {
             :options="store.ipOptions"
             placeholder="解析后选择或直接输入 IP"
             filterable
-            tag
             :disabled="store.isRunning"
             size="small"
           />
@@ -285,7 +284,7 @@ const targetDisplay = computed(() => {
 .app-icon {
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: 6px;
   flex-shrink: 0;
 }
 
@@ -301,7 +300,7 @@ const targetDisplay = computed(() => {
   font-size: 0.6875rem;
   font-weight: 500;
   padding: 1px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid;
   line-height: 1.4;
 }
@@ -313,7 +312,7 @@ const targetDisplay = computed(() => {
   margin-top: 4px;
   padding: 5px 10px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   min-height: 28px;
 }
@@ -324,7 +323,7 @@ const targetDisplay = computed(() => {
   gap: 6px;
   padding: 2px 10px;
   background: rgba(147, 197, 253, 0.06);
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -436,7 +435,7 @@ const targetDisplay = computed(() => {
 .card-base {
   background: #2B2930 !important;
   border: 1px solid #454349 !important;
-  border-radius: 8px !important;
+  border-radius: 16px !important;
   flex-shrink: 0;
 }
 

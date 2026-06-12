@@ -4,8 +4,6 @@ import {main} from '../models';
 
 export function GetDefaultConfig():Promise<main.DefaultConfig>;
 
-export function PauseTest():Promise<void>;
-
 export function ResolveDomain(arg1:string):Promise<string>;
 
 export function StartTest(arg1:string,arg2:number,arg3:number,arg4:number,arg5:number):Promise<void>;

@@ -43,14 +43,14 @@ const themeOverrides: GlobalThemeOverrides = {
     warningColor: '#FFD699',
     infoColor: '#93C5FD',
     fontSize: '14px',
-    borderRadius: '8px',
-    borderRadiusSmall: '6px',
+    borderRadius: '12px',
+    borderRadiusSmall: '8px',
     fontFamily: '"Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
   Card: {
     color: '#2B2930',
     borderColor: '#454349',
-    borderRadius: '12px',
+    borderRadius: '16px',
     titleTextColor: '#E6E1E5',
     titleFontWeight: '500',
   },
@@ -65,8 +65,8 @@ const themeOverrides: GlobalThemeOverrides = {
     colorFocus: '#1C1B1F',
   },
   Button: {
-    borderRadiusMedium: '8px',
-    borderRadiusSmall: '6px',
+    borderRadiusMedium: '12px',
+    borderRadiusSmall: '8px',
     fontWeight: '500',
   },
   Select: {
@@ -81,7 +81,7 @@ const themeOverrides: GlobalThemeOverrides = {
     },
   },
   Tag: {
-    borderRadius: '6px',
+    borderRadius: '8px',
   },
   Scrollbar: {
     color: '#454349',
