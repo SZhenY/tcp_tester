@@ -11,6 +11,8 @@ import appIcon from './assets/images/app-icon.svg'
 
 const store = useTesterStore()
 const message = useMessage()
+const selectOpen = ref(false)
+const onSelectUpdate = (show: boolean) => { selectOpen.value = show }
 
 onMounted(() => {
   store.setupListeners()
@@ -32,7 +34,7 @@ const winStart = ref({ x: 0, y: 0 })
 
 const startDrag = async (e: MouseEvent) => {
   const target = e.target as HTMLElement
-  if (target.closest('.window-controls')) return
+  if (target.closest('.window-controls') || target.closest('.header-ip-row')) return
 
   isDragging.value = true
   dragStart.value = { x: e.screenX, y: e.screenY }
@@ -141,7 +143,8 @@ const targetDisplay = computed(() => {
             v-model:value="store.selectedIp"
             :options="store.ipOptions"
             placeholder="解析后选择或直接输入 IP"
-            filterable
+            :show="selectOpen"
+            @update:show="onSelectUpdate"
             :disabled="store.isRunning"
             size="small"
           />
@@ -217,9 +220,15 @@ const targetDisplay = computed(() => {
           >
             停止
           </n-button>
-          <span class="target-display">
-            目标: <strong>{{ targetDisplay }}:{{ store.port }}</strong>
-            <template v-if="store.threadCount"> | 并发: {{ store.threadCount }}</template>
+          <span class="target-info">
+            <span class="target-tag">
+              <span class="tag-label">目标</span>
+              <span class="tag-value">{{ targetDisplay }}:{{ store.port }}</span>
+            </span>
+            <span class="target-tag" v-if="store.threadCount">
+              <span class="tag-label">并发</span>
+              <span class="tag-value">{{ store.threadCount }}</span>
+            </span>
           </span>
         </n-space>
 
@@ -357,6 +366,7 @@ const targetDisplay = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: text;
 }
 
 .ip-empty {
@@ -458,14 +468,33 @@ const targetDisplay = computed(() => {
   align-items: center;
 }
 
-.target-display {
-  color: #CAC4D0;
-  font-size: 0.75rem;
-  margin-left: 6px;
+.target-info {
+  display: inline-flex;
+  gap: 8px;
+  margin-left: 8px;
 }
 
-.target-display strong {
+.target-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(208, 188, 255, 0.08);
+  border: 1px solid rgba(208, 188, 255, 0.15);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.tag-label {
+  color: #93C5FD;
+  font-weight: 500;
+  font-size: 0.6875rem;
+}
+
+.tag-value {
   color: #E6E1E5;
+  font-weight: 600;
+  font-family: "Cascadia Code", "JetBrains Mono", monospace;
 }
 
 .stats-area {
