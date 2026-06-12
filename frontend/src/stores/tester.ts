@@ -93,10 +93,10 @@ export const useTesterStore = defineStore('tester', () => {
     return hideIP.value ? maskIP(publicIPv6.value) : publicIPv6.value
   })
 
-  // 查询本机公网 IP（循环重试，5 秒间隔，ip.sb ↔ ipinfo/ipify 交替）
+  // 查询本机公网 IP（循环重试，5 秒间隔，ip.sb ↔ ipinfo/ipify 交替，最多重试 10 次）
   const fetchPublicIP = async () => {
-    let round = 0
-    while (true) {
+    const maxRetries = 10
+    for (let round = 0; round < maxRetries; round++) {
       const apis = IP_API_ROUNDS[round % IP_API_ROUNDS.length]
       const [ipv4Res, ipv6Res] = await Promise.allSettled([
         httpGet(apis.ipv4),
@@ -113,8 +113,9 @@ export const useTesterStore = defineStore('tester', () => {
       if (publicIPv4.value && publicIPv6.value) break
 
       // 至少一个还没获取到，等待 5 秒后重试
-      round++
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      if (round < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
     }
   }
 

@@ -23,9 +23,8 @@ type App struct {
 
 	stopChan chan struct{} // 停止信号通道
 
-	successCount  int64 // 成功连接计数
-	failureCount  int64 // 失败连接计数
-	activeWorkers int64 // 活跃 worker 数量
+	successCount int64 // 成功连接计数
+	failureCount int64 // 失败连接计数
 
 	poolShards       []connPoolShard // 分片连接池
 	poolShardCount   int             // 分片数量
@@ -55,27 +54,28 @@ func (a *App) Wait() {
 
 // StartTest 开始 TCP 连接测试
 func (a *App) StartTest(target string, threadCount int, intervalMs int, failureLimit, successLimit int64) error {
-	if a.isRunning.Load() {
+	// 原子检查并设置运行状态，防止并发启动
+	if !a.isRunning.CompareAndSwap(false, true) {
 		return fmt.Errorf("测试已在运行中")
 	}
 
 	// 校验目标地址格式
 	_, portStr, err := net.SplitHostPort(target)
 	if err != nil {
+		a.isRunning.Store(false)
 		return fmt.Errorf("目标地址格式错误: %v", err)
 	}
 	port, _ := strconv.Atoi(portStr)
 
 	// 校验输入参数
 	if msg := ValidateInputs(port, threadCount, intervalMs, failureLimit, successLimit); msg != "" {
+		a.isRunning.Store(false)
 		return fmt.Errorf(msg)
 	}
 
 	// 重置状态
 	a.successCount = 0
 	a.failureCount = 0
-	a.activeWorkers = 0
-	a.isRunning.Store(true)
 	a.stopped.Store(false)
 	a.finishOnce = sync.Once{}
 
@@ -96,7 +96,7 @@ func (a *App) StartTest(target string, threadCount int, intervalMs int, failureL
 	a.emitter.EmitLog(fmt.Sprintf("[%s] 连接池已初始化 (分片模式: %dx%d)", timestamp(), a.poolShardCount, a.poolSizePerShard))
 
 	// 启动测试和统计
-	a.testWg.Add(1)
+	a.testWg.Add(2)
 	go a.runTest(target, threadCount, intervalMs, failureLimit, successLimit)
 	go a.statsTicker()
 
@@ -294,6 +294,8 @@ func (a *App) finishTest(stopReason string) {
 
 // statsTicker 每秒发送一次统计数据
 func (a *App) statsTicker() {
+	defer a.testWg.Done()
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 

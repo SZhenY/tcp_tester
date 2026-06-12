@@ -33,12 +33,11 @@ func (e *CLIEmitter) EmitLog(msg string) {
 
 // EmitStats 输出统计信息到标准输出（每秒一行）
 func (e *CLIEmitter) EmitStats(stats core.Stats) {
-	fmt.Printf("[%s] 统计 - 成功: %d | 失败: %d | 总计: %d | 新增: %d | CPS: %.0f | 平均: %.0f\n",
+	fmt.Printf("[%s] 统计 - 成功: %d | 失败: %d | 总计: %d | CPS: %.0f | 平均: %.0f\n",
 		time.Now().Format("15:04:05"),
 		stats.Success,
 		stats.Failure,
 		stats.Total,
-		stats.Total-stats.Success-stats.Failure,
 		stats.Rate,
 		stats.AvgCPS,
 	)
@@ -91,7 +90,7 @@ func httpGet(url string) (string, error) {
 }
 
 // fetchPublicIP 检测本机公网 IPv4 和 IPv6 地址并输出日志
-// 循环重试，3 秒间隔，ip.sb ↔ ipinfo/ipify 交替，直到获取到至少一个 IP
+// 循环重试，3 秒间隔，ip.sb ↔ ipinfo/ipify 交替，最多重试 10 次
 func fetchPublicIP(emitter *CLIEmitter) (string, string) {
 	emitter.EmitLog("正在检测本机公网 IP ...")
 
@@ -105,8 +104,8 @@ func fetchPublicIP(emitter *CLIEmitter) (string, string) {
 	}
 
 	var resultIPv4, resultIPv6 string
-	round := 0
-	for {
+	const maxRetries = 10
+	for round := 0; round < maxRetries; round++ {
 		apis := rounds[round%len(rounds)]
 
 		var ipv4, ipv6 string
@@ -140,8 +139,9 @@ func fetchPublicIP(emitter *CLIEmitter) (string, string) {
 		}
 
 		// 至少一个还没获取到，等待 3 秒后重试
-		round++
-		time.Sleep(3 * time.Second)
+		if round < maxRetries-1 {
+			time.Sleep(3 * time.Second)
+		}
 	}
 
 	// 输出结果

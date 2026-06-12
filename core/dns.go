@@ -34,17 +34,15 @@ func validateDomain(domain string) string {
 func lookupIPWithFallback(domain string) ([]net.IP, error) {
 	// 尝试自定义 DNS 服务器
 	for _, dns := range dnsServers {
-		dialer := &net.Dialer{
-			Resolver: &net.Resolver{
-				PreferGo: true,
-				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					var d net.Dialer
-					return d.DialContext(ctx, "udp", dns+":53")
-				},
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "udp", dns+":53")
 			},
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		ips, err := dialer.Resolver.LookupIP(ctx, "ip", domain)
+		ips, err := resolver.LookupIP(ctx, "ip", domain)
 		cancel()
 		if err == nil && len(ips) > 0 {
 			return ips, nil
