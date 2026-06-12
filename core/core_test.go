@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -183,8 +184,8 @@ func TestCheckLimits(t *testing.T) {
 	a.successCount = 100
 	a.failureCount = 30
 
-	if msg := a.checkLimits(50, 200); msg != "" {
-		t.Errorf("expected empty, got %q", msg)
+	if err := a.checkLimits(50, 200); err != nil {
+		t.Errorf("expected nil, got %v", err)
 	}
 }
 
@@ -192,9 +193,9 @@ func TestCheckLimits_FailureReached(t *testing.T) {
 	a := New(&mockEmitter{})
 	a.failureCount = 50
 
-	msg := a.checkLimits(50, 1000)
-	if !strings.Contains(msg, "失败上限") {
-		t.Errorf("expected failure limit message, got %q", msg)
+	err := a.checkLimits(50, 1000)
+	if !errors.Is(err, ErrFailureLimit) {
+		t.Errorf("expected ErrFailureLimit, got %v", err)
 	}
 }
 
@@ -202,9 +203,9 @@ func TestCheckLimits_SuccessReached(t *testing.T) {
 	a := New(&mockEmitter{})
 	a.successCount = 1000
 
-	msg := a.checkLimits(50, 1000)
-	if !strings.Contains(msg, "成功上限") {
-		t.Errorf("expected success limit message, got %q", msg)
+	err := a.checkLimits(50, 1000)
+	if !errors.Is(err, ErrSuccessLimit) {
+		t.Errorf("expected ErrSuccessLimit, got %v", err)
 	}
 }
 
@@ -214,9 +215,9 @@ func TestDetermineStopReason_Manual(t *testing.T) {
 	a := New(&mockEmitter{})
 	a.stopped.Store(true)
 
-	msg := a.determineStopReason(50, 1000)
-	if !strings.Contains(msg, "手动停止") {
-		t.Errorf("expected manual stop, got %q", msg)
+	err := a.determineStopReason(50, 1000)
+	if !errors.Is(err, ErrManualStop) {
+		t.Errorf("expected ErrManualStop, got %v", err)
 	}
 }
 
@@ -224,9 +225,9 @@ func TestDetermineStopReason_FailureLimit(t *testing.T) {
 	a := New(&mockEmitter{})
 	a.failureCount = 50
 
-	msg := a.determineStopReason(50, 1000)
-	if !strings.Contains(msg, "失败上限") {
-		t.Errorf("expected failure limit, got %q", msg)
+	err := a.determineStopReason(50, 1000)
+	if !errors.Is(err, ErrFailureLimit) {
+		t.Errorf("expected ErrFailureLimit, got %v", err)
 	}
 }
 
@@ -234,18 +235,18 @@ func TestDetermineStopReason_SuccessLimit(t *testing.T) {
 	a := New(&mockEmitter{})
 	a.successCount = 1000
 
-	msg := a.determineStopReason(50, 1000)
-	if !strings.Contains(msg, "成功上限") {
-		t.Errorf("expected success limit, got %q", msg)
+	err := a.determineStopReason(50, 1000)
+	if !errors.Is(err, ErrSuccessLimit) {
+		t.Errorf("expected ErrSuccessLimit, got %v", err)
 	}
 }
 
 func TestDetermineStopReason_NormalEnd(t *testing.T) {
 	a := New(&mockEmitter{})
 
-	msg := a.determineStopReason(50, 1000)
-	if msg != "测试结束" {
-		t.Errorf("expected normal end, got %q", msg)
+	err := a.determineStopReason(50, 1000)
+	if !errors.Is(err, ErrNormalEnd) {
+		t.Errorf("expected ErrNormalEnd, got %v", err)
 	}
 }
 

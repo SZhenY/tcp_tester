@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -11,6 +12,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+// 预定义错误常量，避免热路径中 fmt.Sprintf 开销
+var (
+	ErrFailureLimit = errors.New("达到失败上限")
+	ErrSuccessLimit = errors.New("达到成功上限")
+	ErrManualStop   = errors.New("手动停止")
+	ErrNormalEnd    = errors.New("测试结束")
 )
 
 // App TCP 连接测试引擎
@@ -25,6 +34,7 @@ type App struct {
 
 	successCount int64 // 成功连接计数
 	failureCount int64 // 失败连接计数
+	checkCounter int64 // 限制检查计数器（降频用）
 
 	poolShards       []connPoolShard // 分片连接池
 	poolShardCount   int             // 分片数量
@@ -133,22 +143,26 @@ func (a *App) runTest(target string, threadCount int, intervalMs int, failureLim
 	ctx := a.testCtx
 	a.ctxMu.RUnlock()
 
-	// 创建工作通道和 Worker Pool
-	workChan := make(chan string, threadCount*2)
+	// 创建工作通道和 Worker Pool（增大缓冲区减少阻塞）
+	workChan := make(chan string, threadCount*4)
 	var workerWg sync.WaitGroup
 
 	// 预分配 Dialer，所有 worker 共享
 	var dialer net.Dialer
 	dialer.Timeout = 3 * time.Second
 
-	// 启动持久化 worker
+	// 启动持久化 worker（使用本地计数器减少原子操作竞争）
 	for i := 0; i < threadCount; i++ {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
+			var localSucc, localFail int64
 			for t := range workChan {
-				a.testConnection(ctx, t, &dialer)
+				a.testConnection(ctx, t, &dialer, &localSucc, &localFail)
 			}
+			// flush 本地计数器到全局
+			atomic.AddInt64(&a.successCount, localSucc)
+			atomic.AddInt64(&a.failureCount, localFail)
 		}()
 	}
 
@@ -161,10 +175,12 @@ RunLoop:
 			break RunLoop
 		}
 
-		// 检查是否达到限制
-		if reason := a.checkLimits(failureLimit, successLimit); reason != "" {
-			a.emitter.EmitLog(fmt.Sprintf("[%s] %s", timestamp(), reason))
-			break RunLoop
+		// 降频检查限制：每 1000 次检查一次
+		if atomic.AddInt64(&a.checkCounter, 1)%1000 == 0 {
+			if reason := a.checkLimits(failureLimit, successLimit); reason != nil {
+				a.emitter.EmitLog(fmt.Sprintf("[%s] %s", timestamp(), reason.Error()))
+				break RunLoop
+			}
 		}
 
 		// 间隔控制
@@ -198,38 +214,38 @@ RunLoop:
 }
 
 // checkLimits 检查是否达到成功/失败上限
-func (a *App) checkLimits(failureLimit, successLimit int64) string {
+func (a *App) checkLimits(failureLimit, successLimit int64) error {
 	if atomic.LoadInt64(&a.failureCount) >= failureLimit {
-		return fmt.Sprintf("达到失败上限: %d", failureLimit)
+		return ErrFailureLimit
 	}
 	if atomic.LoadInt64(&a.successCount) >= successLimit {
-		return fmt.Sprintf("达到成功上限: %d", successLimit)
+		return ErrSuccessLimit
 	}
-	return ""
+	return nil
 }
 
 // determineStopReason 确定测试停止原因
-func (a *App) determineStopReason(failureLimit, successLimit int64) string {
+func (a *App) determineStopReason(failureLimit, successLimit int64) error {
 	if a.stopped.Load() {
-		return "手动停止"
+		return ErrManualStop
 	}
 	if atomic.LoadInt64(&a.failureCount) >= failureLimit {
-		return fmt.Sprintf("达到失败上限 (%d)", failureLimit)
+		return ErrFailureLimit
 	}
 	if atomic.LoadInt64(&a.successCount) >= successLimit {
-		return fmt.Sprintf("达到成功上限 (%d)", successLimit)
+		return ErrSuccessLimit
 	}
-	return "测试结束"
+	return ErrNormalEnd
 }
 
-// testConnection 执行单次 TCP 连接测试
-func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dialer) {
+// testConnection 执行单次 TCP 连接测试（使用本地计数器减少原子操作）
+func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dialer, localSucc, localFail *int64) {
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		if ctx.Err() != nil {
 			return // 上下文取消，不计为失败
 		}
-		atomic.AddInt64(&a.failureCount, 1)
+		*localFail++
 		return
 	}
 
@@ -241,7 +257,7 @@ func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dia
 	default:
 	}
 
-	atomic.AddInt64(&a.successCount, 1)
+	*localSucc++
 
 	// 设置 TCP 连接参数
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
@@ -257,7 +273,7 @@ func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dia
 }
 
 // finishTest 完成测试，发送最终统计和日志
-func (a *App) finishTest(stopReason string) {
+func (a *App) finishTest(stopReason error) {
 	a.finishOnce.Do(func() {
 		a.isRunning.Store(false)
 		a.stopped.Store(false)
@@ -284,8 +300,8 @@ func (a *App) finishTest(stopReason string) {
 			Rate:    0,
 			AvgCPS:  avgCps,
 		})
-		a.emitter.EmitLog(fmt.Sprintf("[%s] 测试完成 - 总成功: %d 总失败: %d 原因: %s", timestamp(), finalSucc, finalFail, stopReason))
-		a.emitter.EmitTestFinished(stopReason)
+		a.emitter.EmitLog(fmt.Sprintf("[%s] 测试完成 - 总成功: %d 总失败: %d 原因: %s", timestamp(), finalSucc, finalFail, stopReason.Error()))
+		a.emitter.EmitTestFinished(stopReason.Error())
 
 		// 释放连接池引用，允许 GC 回收
 		a.poolShards = nil
