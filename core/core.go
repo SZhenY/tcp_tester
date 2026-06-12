@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -290,11 +289,6 @@ func (a *App) finishTest(stopReason string) {
 
 		// 释放连接池引用，允许 GC 回收
 		a.poolShards = nil
-
-		// 释放内存
-		runtime.GC()
-		debug.FreeOSMemory()
-		debug.SetGCPercent(100) // 恢复默认 GC 频率
 	})
 }
 

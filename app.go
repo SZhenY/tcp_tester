@@ -7,8 +7,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"strconv"
 
 	"tcp-tester/core"
@@ -70,18 +68,6 @@ func (a *App) ResolveDomain(domain string) (string, error) {
 
 // StartTest 开始测试（暴露给前端）
 func (a *App) StartTest(target string, threadCount int, intervalMs int, failureLimit int64, successLimit int64) error {
-	// 校验目标地址格式
-	_, portStr, err := net.SplitHostPort(target)
-	if err != nil {
-		return fmt.Errorf("目标地址格式错误: %v", err)
-	}
-	port, _ := strconv.Atoi(portStr)
-
-	// 校验输入参数
-	if msg := core.ValidateInputs(port, threadCount, intervalMs, failureLimit, successLimit); msg != "" {
-		return fmt.Errorf(msg)
-	}
-
 	return a.core.StartTest(target, threadCount, intervalMs, failureLimit, successLimit)
 }
 
@@ -89,9 +75,6 @@ func (a *App) StartTest(target string, threadCount int, intervalMs int, failureL
 func (a *App) StopTest() {
 	a.core.StopTest()
 }
-
-// PauseTest 暂停测试（兼容旧接口，不再支持）
-func (a *App) PauseTest() {}
 
 // DefaultConfig 前端默认配置（从后端常量同步）
 type DefaultConfig struct {
