@@ -33,7 +33,7 @@ const IP_API_ROUNDS = [
 ]
 
 export const useTesterStore = defineStore('tester', () => {
-  const domain = ref('www.huawei.com')
+  const domain = ref('')
   const port = ref('80')
   const ipOptions = ref<{ label: string; value: string; type: 'ipv4' | 'ipv6' }[]>([])
   const selectedIp = ref('')
@@ -203,12 +203,25 @@ export const useTesterStore = defineStore('tester', () => {
   }
 
   const startTestAction = async () => {
-    const ip = selectedIp.value || domain.value.trim()
-    const target = ip.includes(':') ? `[${ip}]:${port.value}` : `${ip}:${port.value}`
-    if (!ip) {
-      pushSystemLog(`<span class="log-failure">[${formatTimestamp()}] 错误: 请先输入域名或 IP 地址</span>`)
+    const trimmedDomain = domain.value.trim()
+    if (!trimmedDomain) {
+      pushSystemLog(`<span class="log-failure">[${formatTimestamp()}] 错误: 请先输入域名</span>`)
       return
     }
+
+    // 如果未解析过，自动解析
+    let ip = selectedIp.value
+    if (!ip || ipOptions.value.length === 0) {
+      await resolveDomainAction()
+      ip = selectedIp.value
+    }
+
+    if (!ip) {
+      pushSystemLog(`<span class="log-failure">[${formatTimestamp()}] 错误: 域名解析失败，无法获取 IP</span>`)
+      return
+    }
+
+    const target = ip.includes(':') ? `[${ip}]:${port.value}` : `${ip}:${port.value}`
     try {
       await StartTest(target, Number(threadCount.value), Number(intervalMs.value), Number(failureLimit.value), Number(successLimit.value))
       isRunning.value = true

@@ -17,9 +17,6 @@ const onSelectUpdate = (show: boolean) => { selectOpen.value = show }
 onMounted(() => {
   store.setupListeners()
   store.initDefaults()
-  if (store.domain) {
-    store.resolveDomainAction()
-  }
   store.fetchPublicIP()
 })
 
@@ -206,7 +203,7 @@ const targetDisplay = computed(() => {
         <n-space :size="8">
           <n-button
             type="primary"
-            :disabled="!store.isIdle"
+            :disabled="!store.isIdle || !store.domain.trim()"
             @click="store.startTestAction"
             size="small"
           >
