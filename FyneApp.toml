@@ -3,7 +3,7 @@ Website = "https://github.com/SZhenY/tcp_tester"
 [Details]
   Icon = "ico/icon-512.png"
   Name = "TCP Tester"
-  ID = "com.szheny.tcp-tester"
+  ID = "com.szheny.tcptester"
   Version = "1.0.0"
   Build = 1
 

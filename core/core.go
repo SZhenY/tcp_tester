@@ -159,8 +159,14 @@ func (a *App) runTest(target string, threadCount int, intervalMs int, failureLim
 			var localSucc, localFail int64
 			for t := range workChan {
 				a.testConnection(ctx, t, &dialer, &localSucc, &localFail)
+				// 每 100 个连接 flush 一次，保证 checkLimits 能看到最新计数
+				if localSucc+localFail >= 100 {
+					atomic.AddInt64(&a.successCount, localSucc)
+					atomic.AddInt64(&a.failureCount, localFail)
+					localSucc, localFail = 0, 0
+				}
 			}
-			// flush 本地计数器到全局
+			// flush 剩余
 			atomic.AddInt64(&a.successCount, localSucc)
 			atomic.AddInt64(&a.failureCount, localFail)
 		}()
