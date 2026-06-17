@@ -123,6 +123,10 @@ jobs:
           ANDROID_NDK_HOME: ${{ github.workspace }}/android-sdk/ndk/25.2.9519653
         run: fyne package -os android -name tcp-tester -appID com.szheny.tester -icon ../ico/icon-512.png
 
+      - name: List build output
+        working-directory: fyne
+        run: ls -la *.apk 2>/dev/null || echo "No APK found in fyne/"; ls -la
+
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
