@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: android-arm64
-          path: fyne/tcp-tester.apk
+          path: fyne/*.apk
 
   release:
     runs-on: ubuntu-latest
