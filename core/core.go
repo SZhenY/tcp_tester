@@ -192,7 +192,7 @@ RunLoop:
 			lastBatchTime = time.Now().UnixMilli()
 		}
 
-		// 非阻塞发送任务
+		// 非阻塞发送任务，满时让出 CPU 重试
 		select {
 		case workChan <- target:
 		default:

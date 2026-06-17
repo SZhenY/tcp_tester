@@ -37,6 +37,17 @@ func validateInput(value int, cfg InputConfig) (int, string) {
 	return value, ""
 }
 
+// validateInt64 校验 int64 输入值，避免 32 位平台截断风险
+func validateInt64(value int64, cfg InputConfig) (int, string) {
+	if value < int64(cfg.MinValue) {
+		return cfg.MinValue, fmt.Sprintf("%s不能小于%d", cfg.Name, cfg.MinValue)
+	}
+	if value > int64(cfg.MaxValue) {
+		return cfg.MaxValue, fmt.Sprintf("%s不能大于%d", cfg.Name, cfg.MaxValue)
+	}
+	return int(value), ""
+}
+
 // ValidateInputs 批量校验所有输入参数，返回第一个错误信息（空字符串表示通过）
 func ValidateInputs(port, threadCount, intervalMs int, failureLimit, successLimit int64) string {
 	validations := []struct {
@@ -46,13 +57,17 @@ func ValidateInputs(port, threadCount, intervalMs int, failureLimit, successLimi
 		{port, PortConfig},
 		{threadCount, ThreadConfig},
 		{intervalMs, IntervalConfig},
-		{int(failureLimit), FailureConfig},
-		{int(successLimit), SuccessConfig},
 	}
 	for _, v := range validations {
 		if _, msg := validateInput(v.value, v.cfg); msg != "" {
 			return msg
 		}
+	}
+	if _, msg := validateInt64(failureLimit, FailureConfig); msg != "" {
+		return msg
+	}
+	if _, msg := validateInt64(successLimit, SuccessConfig); msg != "" {
+		return msg
 	}
 	return ""
 }

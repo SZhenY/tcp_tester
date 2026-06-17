@@ -58,8 +58,11 @@ func (a *App) storeConn(conn net.Conn) {
 	}
 
 	idx := atomic.AddInt64(&a.poolIndex, 1) - 1
-	shardIdx := int(idx % int64(a.poolShardCount))
-	offset := int((idx / int64(a.poolShardCount)) % int64(a.poolSizePerShard))
+	// 使用 int64 运算避免 32 位平台截断后变为负数导致数组越界
+	shardIdx64 := idx % int64(a.poolShardCount)
+	offset64 := (idx / int64(a.poolShardCount)) % int64(a.poolSizePerShard)
+	shardIdx := int(shardIdx64)
+	offset := int(offset64)
 
 	shard := &a.poolShards[shardIdx]
 	shard.mu.Lock()

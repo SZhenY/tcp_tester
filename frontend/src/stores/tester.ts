@@ -273,10 +273,13 @@ export const useTesterStore = defineStore('tester', () => {
       displayStats.value = { ...stats.value }
     })
 
-    EventsOn('testFinished', () => {
+    EventsOn('testFinished', (reason: string) => {
       isRunning.value = false
       stopStatsTimer()
       displayStats.value = { ...stats.value }
+      if (reason) {
+        pushSystemLog(`<span class="log-info">[${formatTimestamp()}] 测试结束: ${reason}</span>`)
+      }
     })
   }
 
