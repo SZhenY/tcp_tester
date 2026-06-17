@@ -34,7 +34,6 @@ type App struct {
 
 	successCount int64 // 成功连接计数
 	failureCount int64 // 失败连接计数
-	checkCounter int64 // 限制检查计数器（降频用）
 
 	poolShards       []connPoolShard // 分片连接池
 	poolShardCount   int             // 分片数量
@@ -151,24 +150,14 @@ func (a *App) runTest(target string, threadCount int, intervalMs int, failureLim
 	var dialer net.Dialer
 	dialer.Timeout = 3 * time.Second
 
-	// 启动持久化 worker（使用本地计数器减少原子操作竞争）
+	// 启动持久化 worker
 	for i := 0; i < threadCount; i++ {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
-			var localSucc, localFail int64
 			for t := range workChan {
-				a.testConnection(ctx, t, &dialer, &localSucc, &localFail)
-				// 每 100 个连接 flush 一次，保证 checkLimits 能看到最新计数
-				if localSucc+localFail >= 100 {
-					atomic.AddInt64(&a.successCount, localSucc)
-					atomic.AddInt64(&a.failureCount, localFail)
-					localSucc, localFail = 0, 0
-				}
+				a.testConnection(ctx, t, &dialer)
 			}
-			// flush 剩余
-			atomic.AddInt64(&a.successCount, localSucc)
-			atomic.AddInt64(&a.failureCount, localFail)
 		}()
 	}
 
@@ -181,12 +170,10 @@ RunLoop:
 			break RunLoop
 		}
 
-		// 降频检查限制：每 1000 次检查一次
-		if atomic.AddInt64(&a.checkCounter, 1)%1000 == 0 {
-			if reason := a.checkLimits(failureLimit, successLimit); reason != nil {
-				a.emitter.EmitLog(fmt.Sprintf("[%s] %s", timestamp(), reason.Error()))
-				break RunLoop
-			}
+		// 检查是否达到上限
+		if reason := a.checkLimits(failureLimit, successLimit); reason != nil {
+			a.emitter.EmitLog(fmt.Sprintf("[%s] %s", timestamp(), reason.Error()))
+			break RunLoop
 		}
 
 		// 间隔控制
@@ -244,14 +231,14 @@ func (a *App) determineStopReason(failureLimit, successLimit int64) error {
 	return ErrNormalEnd
 }
 
-// testConnection 执行单次 TCP 连接测试（使用本地计数器减少原子操作）
-func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dialer, localSucc, localFail *int64) {
+// testConnection 执行单次 TCP 连接测试
+func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dialer) {
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		if ctx.Err() != nil {
 			return // 上下文取消，不计为失败
 		}
-		*localFail++
+		atomic.AddInt64(&a.failureCount, 1)
 		return
 	}
 
@@ -263,7 +250,7 @@ func (a *App) testConnection(ctx context.Context, target string, dialer *net.Dia
 	default:
 	}
 
-	*localSucc++
+	atomic.AddInt64(&a.successCount, 1)
 
 	// 设置 TCP 连接参数
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
