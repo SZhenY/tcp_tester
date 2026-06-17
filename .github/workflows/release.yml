@@ -117,16 +117,17 @@ jobs:
             "ndk;25.2.9519653"
 
       - name: Build Android APK
+        working-directory: fyne
         env:
           ANDROID_HOME: ${{ github.workspace }}/android-sdk
           ANDROID_NDK_HOME: ${{ github.workspace }}/android-sdk/ndk/25.2.9519653
-        run: fyne package -os android -name tcp-tester -appID com.szheny.tester -tags fyne -icon ico/icon-512.png
+        run: fyne package -os android -name tcp-tester -appID com.szheny.tester -icon ../ico/icon-512.png
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
           name: android-arm64
-          path: tcp-tester.apk
+          path: fyne/tcp-tester.apk
 
   release:
     runs-on: ubuntu-latest

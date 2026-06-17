@@ -2,3 +2,6 @@ build/bin
 node_modules
 frontend/dist
 rsrc_windows_*.syso
+go.work
+go.work.sum
+fyne/*.apk

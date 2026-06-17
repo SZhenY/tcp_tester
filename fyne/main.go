@@ -1,5 +1,3 @@
-//go:build fyne
-
 package main
 
 import (
@@ -91,6 +89,10 @@ func (b *bindingString) Set(v string) {
 	b.mu.Lock()
 	b.val = v
 	b.mu.Unlock()
+}
+
+func main() {
+	newFyneApp().run()
 }
 
 func newFyneApp() *FyneApp {

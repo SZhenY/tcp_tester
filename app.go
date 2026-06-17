@@ -1,4 +1,4 @@
-//go:build !cli && !fyne
+//go:build !cli
 
 // app.go — Wails GUI 版本的 App 包装器
 // 将 core.App 桥接到 Wails 运行时，暴露给前端的方法签名不变

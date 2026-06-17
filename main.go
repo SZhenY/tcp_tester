@@ -1,4 +1,4 @@
-//go:build !cli && !fyne
+//go:build !cli
 
 // main.go — Wails GUI 版本入口
 
