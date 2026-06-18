@@ -29,7 +29,7 @@ function maskIP(ip: string): string {
 // API 轮次定义
 const IP_API_ROUNDS = [
   { ipv4: 'https://api-ipv4.ip.sb/ip', ipv6: 'https://api-ipv6.ip.sb/ip' },
-  { ipv4: 'https://ipinfo.io/ip', ipv6: 'https://api64.ipify.org' },
+  { ipv4: 'https://ipinfo.io/ip', ipv6: 'api6.ipify.org' },
 ]
 
 export const useTesterStore = defineStore('tester', () => {
